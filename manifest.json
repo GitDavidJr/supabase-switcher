@@ -1,40 +1,46 @@
 {
-  "manifest_version": 3,
-  "name": "Supabase Account Switcher",
-  "version": "1.0.0",
-  "description": "Gerencie e troque entre múltiplas contas do Supabase com um clique.",
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  },
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
+    "manifest_version": 3,
+    "name": "Supabase Account Switcher",
+    "version": "1.0.0",
+    "description": "Gerencie e troque entre múltiplas contas do Supabase com um clique.",
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
     },
-    "default_title": "Supabase Account Switcher"
-  },
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://supabase.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_start"
-    }
-  ],
-  "permissions": [
-    "storage",
-    "tabs",
-    "scripting",
-    "activeTab"
-  ],
-  "host_permissions": [
-    "https://supabase.com/*"
-  ]
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        },
+        "default_title": "Supabase Account Switcher"
+    },
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://supabase.com/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_start"
+        }
+    ],
+    "permissions": [
+        "storage",
+        "tabs",
+        "scripting",
+        "activeTab",
+        "alarms"
+    ],
+    "host_permissions": [
+        "https://supabase.com/*",
+        "https://*.supabase.co/*"
+    ]
 }

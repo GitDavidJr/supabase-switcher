@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-save-confirm').addEventListener('click', confirmSave);
     document.getElementById('btn-delete-cancel').addEventListener('click', closeDeleteModal);
     document.getElementById('btn-delete-confirm').addEventListener('click', confirmDelete);
+    document.getElementById('btn-refresh-all').addEventListener('click', forceRefreshAll);
 
     accountNameInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') confirmSave();
@@ -271,4 +272,38 @@ function getInitials(name) {
 
 function escHtml(str) {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ─── Force refresh all tokens ─────────────────────────────────────────────────
+async function forceRefreshAll() {
+    const btn = document.getElementById('btn-refresh-all');
+    const lastRefresh = document.getElementById('last-refresh');
+
+    btn.disabled = true;
+    btn.classList.add('spinning');
+    lastRefresh.textContent = 'Renovando...';
+
+    const res = await sendMessage({ action: 'FORCE_REFRESH' });
+
+    btn.disabled = false;
+    btn.classList.remove('spinning');
+
+    if (res.error) {
+        lastRefresh.textContent = 'Erro ao renovar';
+        showStatus(res.error, 'error');
+        return;
+    }
+
+    const count = res.refreshed ?? 0;
+    const total = res.total ?? sessions.length;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    lastRefresh.textContent = `${count}/${total} renovados às ${timeStr}`;
+    if (count > 0) {
+        showStatus(`✓ ${count} token(s) renovados com sucesso!`, 'success');
+        setTimeout(clearStatus, 3000);
+    } else {
+        showStatus('Todos os tokens ainda estão frescos.', 'info');
+        setTimeout(clearStatus, 2500);
+    }
 }
