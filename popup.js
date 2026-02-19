@@ -34,6 +34,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-delete-cancel').addEventListener('click', closeDeleteModal);
     document.getElementById('btn-delete-confirm').addEventListener('click', confirmDelete);
     document.getElementById('btn-refresh-all').addEventListener('click', forceRefreshAll);
+    document.getElementById('btn-export').addEventListener('click', exportSessions);
+    document.getElementById('btn-import').addEventListener('click', () => document.getElementById('import-file').click());
+    document.getElementById('import-file').addEventListener('change', importSessions);
 
     accountNameInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') confirmSave();
@@ -314,4 +317,72 @@ async function forceRefreshAll() {
         showStatus('Todos os tokens ainda estão frescos.', 'info');
         setTimeout(clearStatus, 2500);
     }
+}
+
+// ─── Export/Import ────────────────────────────────────────────────────────────
+async function exportSessions() {
+    const { sessions = [] } = await chrome.storage.local.get('sessions');
+    if (sessions.length === 0) {
+        showStatus('Nenhuma conta para exportar.', 'error');
+        setTimeout(clearStatus, 2000);
+        return;
+    }
+
+    const data = JSON.stringify(sessions, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const date = new Date().toISOString().split('T')[0];
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `supabase-accounts-${date}.json`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+    showStatus('✓ Backup exportado com sucesso!', 'success');
+    setTimeout(clearStatus, 3000);
+}
+
+async function importSessions(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        try {
+            const imported = JSON.parse(event.target.result);
+            if (!Array.isArray(imported)) throw new Error('Formato inválido.');
+
+            const res = await chrome.storage.local.get('sessions');
+            const current = res.sessions || [];
+
+            // Merge sessions by ID, avoiding duplicates
+            const currentIds = new Set(current.map(s => s.id));
+            const newSessions = [...current];
+
+            let addedCount = 0;
+            imported.forEach(s => {
+                if (s.id && s.tokens && !currentIds.has(s.id)) {
+                    newSessions.push(s);
+                    addedCount++;
+                }
+            });
+
+            if (addedCount === 0) {
+                showStatus('Nenhuma conta nova encontrada no arquivo.', 'info');
+            } else {
+                await chrome.storage.local.set({ sessions: newSessions });
+                await loadSessions();
+                showStatus(`✓ ${addedCount} conta(s) importada(s)! Verificando tokens...`, 'success');
+                // Trigger background check for the new sessions
+                sendMessage({ action: 'FORCE_REFRESH' }).then(() => loadSessions());
+            }
+            setTimeout(clearStatus, 4000);
+        } catch (err) {
+            showStatus('Erro ao importar: arquivo inválido.', 'error');
+            setTimeout(clearStatus, 4000);
+        }
+        e.target.value = ''; // Reset file input
+    };
+    reader.readAsText(file);
 }
