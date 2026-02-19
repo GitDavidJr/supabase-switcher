@@ -269,6 +269,7 @@ async function confirmDelete() {
 
 // ─── Color picker ─────────────────────────────────────────────────────────────
 function buildColorPicker() {
+    colorPicker.innerHTML = ''; // Prevent duplicates
     COLORS.forEach(color => {
         const swatch = document.createElement('div');
         swatch.className = 'color-swatch' + (color === selectedColor ? ' selected' : '');
@@ -450,29 +451,55 @@ async function checkPendingSession() {
 }
 
 async function savePendingSession() {
-    const res = await sendMessage({ action: 'GET_PENDING_SESSION' });
-    if (!res.pendingSession) return;
+    console.log('[Supabase Switcher] savePendingSession clicked');
+    showStatus('<span class="spinner"></span>Acessando dados da nova conta...', 'info');
 
-    const { tokens, email } = res.pendingSession;
+    try {
+        const res = await sendMessage({ action: 'GET_PENDING_SESSION' });
+        if (!res || !res.pendingSession) {
+            showStatus('Erro: Sessão não encontrada. Tente logar novamente.', 'error');
+            setTimeout(clearStatus, 4000);
+            return;
+        }
 
-    // Use the save modal to let user name the account
-    const banner = document.getElementById('pending-banner');
-    if (banner) banner.classList.add('hidden');
+        const { tokens, email } = res.pendingSession;
+        console.log('[Supabase Switcher] Captured tokens for:', email);
 
-    // Pre-fill modal with detected email and open it
-    modalEmail.textContent = email ? `Conta: ${email}` : '';
-    accountNameInput.value = email ? email.split('@')[0] : 'Nova Conta';
-    selectedColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-    buildColorPicker();
-    modalOverlay.classList.remove('hidden');
-    accountNameInput.focus();
-    accountNameInput.select();
+        // Hide banner
+        const banner = document.getElementById('pending-banner');
+        if (banner) banner.classList.add('hidden');
 
-    // Override confirm to use the pending tokens directly
-    const originalConfirm = window._pendingConfirmOverride;
-    window._pendingTokens = tokens;
-    window._pendingEmail = email;
+        // Prepare modal
+        if (!modalOverlay || !accountNameInput) {
+            console.error('[Supabase Switcher] Modal elements not found');
+            return;
+        }
+
+        modalEmail.textContent = email ? `Configurando conta: ${email}` : 'Configurando conta';
+        accountNameInput.value = email ? email.split('@')[0] : 'Minha Conta';
+
+        selectedColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+        buildColorPicker();
+
+        // Show modal
+        modalOverlay.classList.remove('hidden');
+        clearStatus();
+
+        // Focus and store data
+        window._pendingTokens = tokens;
+        window._pendingEmail = email;
+
+        setTimeout(() => {
+            accountNameInput.focus();
+            accountNameInput.select();
+        }, 100);
+
+    } catch (err) {
+        showStatus(`Erro ao salvar: ${err.message}`, 'error');
+        console.error(err);
+    }
 }
+
 
 async function dismissPendingSession() {
     await sendMessage({ action: 'CLEAR_PENDING_SESSION' });
