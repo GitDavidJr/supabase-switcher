@@ -1,0 +1,25 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*' # Dispara quando você criar uma tag tipo v1.1.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Extension Zip
+        run: |
+          # Cria o arquivo zip excluindo arquivos desnecessários
+          zip -r supabase-switcher.zip . -x "*.git*" ".agent/*" ".github/*" "node_modules/*" "*.js.map" "generate-icons.js" "package.json" "package-lock.json"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: supabase-switcher.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
