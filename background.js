@@ -2,7 +2,11 @@
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const ALARM_NAME = 'supabase-token-refresh';
-const REFRESH_INTERVAL_MINUTES = 30; // Refresh every 30 min (tokens last 1h — 30min safety margin)
+// Check every 10 minutes. The real threshold for refreshing is "5 minutes left on the token".
+// Tokens last 1 hour, so in the worst case we check 6 times per hour but only actually
+// call the API once (when the token is about to expire). This avoids unnecessary API calls
+// while still catching tokens before they expire.
+const REFRESH_INTERVAL_MINUTES = 10;
 
 // ─── Startup: set up the alarm ────────────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
@@ -106,7 +110,13 @@ async function refreshAllSessions() {
 
 /**
  * Refreshes tokens for a single session.
- * Returns { tokens } with updated localStorage-ready token map, or null on failure.
+ *
+ * Key insight from GoTrue/Supabase internals:
+ * - Refresh Token Rotation: using a refresh_token invalidates it and returns a NEW one.
+ *   We MUST save the new refresh_token or the next refresh will fail with 400 invalid_grant.
+ * - The stored localStorage value must contain ALL original fields (user, token_type, etc.)
+ *   We merge the new token data onto the old object to preserve everything.
+ * - expires_at is a Unix timestamp (seconds). We check against it directly.
  */
 async function refreshSessionTokens(session) {
     const { tokens } = session;
@@ -118,8 +128,7 @@ async function refreshSessionTokens(session) {
         return null;
     }
 
-    // Extract project ref from the key: sb-<project-ref>-auth-token
-    // e.g. "sb-abcdefghijklmno-auth-token" → "abcdefghijklmno"
+    // Extract project ref: sb-<project-ref>-auth-token
     const match = authKey.match(/^sb-(.+)-auth-token$/);
     if (!match) return null;
     const projectRef = match[1];
@@ -129,33 +138,48 @@ async function refreshSessionTokens(session) {
     try {
         tokenData = JSON.parse(tokens[authKey]);
     } catch {
+        console.warn(`[Supabase Switcher] Could not parse token JSON for "${session.name}"`);
         return null;
     }
 
     const refreshToken = tokenData?.refresh_token;
     if (!refreshToken) {
-        console.warn(`[Supabase Switcher] No refresh_token in session "${session.name}"`);
+        console.warn(`[Supabase Switcher] No refresh_token in "${session.name}"`);
         return null;
     }
 
-    // Check if still fresh (don't refresh if more than 20 min left)
-    const expiresAt = tokenData?.expires_at;
-    if (expiresAt) {
-        const nowSec = Math.floor(Date.now() / 1000);
-        const secsRemaining = expiresAt - nowSec;
-        if (secsRemaining > 20 * 60) {
-            console.log(`[Supabase Switcher] "${session.name}" still fresh (${Math.round(secsRemaining / 60)} min left), skipping.`);
-            return null;
-        }
+    // --- Smarter threshold check ---
+    // Use expires_at (Unix seconds) if available, otherwise estimate from expires_in
+    const nowSec = Math.floor(Date.now() / 1000);
+    let secsRemaining = null;
+
+    if (tokenData.expires_at) {
+        secsRemaining = tokenData.expires_at - nowSec;
+    } else if (tokenData.expires_in) {
+        // Fallback: treat as recently-issued — refresh if expires_in < threshold
+        secsRemaining = tokenData.expires_in;
     }
 
-    // Call Supabase auth refresh endpoint
+    // Skip if more than 5 minutes remaining (more aggressive than before —
+    // the real safety net is: if we're within 5 min, refresh no matter what)
+    const REFRESH_THRESHOLD_SECS = 5 * 60; // 5 minutes
+    if (secsRemaining !== null && secsRemaining > REFRESH_THRESHOLD_SECS) {
+        console.log(`[Supabase Switcher] "${session.name}" still valid (${Math.round(secsRemaining / 60)} min left), skipping.`);
+        return null;
+    }
+
+    // --- Call the GoTrue refresh endpoint ---
     const url = `https://${projectRef}.supabase.co/auth/v1/token?grant_type=refresh_token`;
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-    });
+    let response;
+    try {
+        response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+    } catch (networkErr) {
+        throw new Error(`Network error during refresh: ${networkErr.message}`);
+    }
 
     if (!response.ok) {
         const body = await response.text();
@@ -164,12 +188,29 @@ async function refreshSessionTokens(session) {
 
     const newTokenData = await response.json();
 
-    // Rebuild the tokens map with updated auth token
-    const updatedTokens = { ...tokens };
-    updatedTokens[authKey] = JSON.stringify(newTokenData);
+    /**
+     * CRITICAL: Merge strategy.
+     * The GoTrue API returns the full session object, but we merge ONTO the previous
+     * object to preserve any extra fields the Supabase dashboard stores (like provider_token,
+     * user metadata, etc.). Fields from the new response always win.
+     *
+     * This also ensures the new refresh_token (from rotation) is correctly saved.
+     */
+    const mergedTokenData = {
+        ...tokenData,       // preserve all original fields
+        ...newTokenData,    // overwrite with fresh fields (access_token, refresh_token, expires_at, etc.)
+        // Also update expires_at explicitly in case the API returns only expires_in
+        expires_at: newTokenData.expires_at || (nowSec + (newTokenData.expires_in || 3600)),
+    };
 
+    // Rebuild the tokens map
+    const updatedTokens = { ...tokens };
+    updatedTokens[authKey] = JSON.stringify(mergedTokenData);
+
+    console.log(`[Supabase Switcher] ✓ "${session.name}" token refreshed. New refresh_token saved. Expires in ${Math.round((mergedTokenData.expires_at - nowSec) / 60)} min.`);
     return { tokens: updatedTokens };
 }
+
 
 // ─── Active tab: get the Supabase tab ────────────────────────────────────────
 async function getActiveSupabaseTab() {
