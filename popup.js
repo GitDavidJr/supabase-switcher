@@ -112,7 +112,8 @@ function renderSessions() {
 
 // ─── Switch session ───────────────────────────────────────────────────────────
 async function switchSession(id) {
-    showStatus('<span class="spinner"></span>Trocando de conta...', 'info');
+    const isAlreadyActive = id === activeSessionId;
+    showStatus(isAlreadyActive ? '<span class="spinner"></span>Reparando acesso...' : '<span class="spinner"></span>Trocando de conta...', 'info');
 
     const res = await sendMessage({ action: 'SWITCH_SESSION', data: { id } });
     if (res.error) {
@@ -121,7 +122,7 @@ async function switchSession(id) {
     }
     activeSessionId = id;
     renderSessions();
-    showStatus('✓ Conta trocada com sucesso!', 'success');
+    showStatus(isAlreadyActive ? '✓ Acesso re-injetado!' : '✓ Conta trocada com sucesso!', 'success');
     setTimeout(clearStatus, 2500);
 }
 
