@@ -30,7 +30,7 @@ body {
     color: var(--text);
     width: 360px;
     min-height: 200px;
-    max-height: 580px;
+    max-height: 600px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -287,11 +287,12 @@ body {
     inset: 0;
     background: rgba(0, 0, 0, 0.7);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     z-index: 100;
     backdrop-filter: blur(4px);
-    padding: 16px;
+    padding: 12px;
+    overflow-y: auto;
 }
 
 .modal-overlay.hidden {
@@ -302,11 +303,12 @@ body {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 14px;
-    padding: 20px;
+    padding: 16px;
     width: 100%;
     max-width: 320px;
     box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
     animation: slideUp 0.2s ease;
+    flex-shrink: 0;
 }
 
 @keyframes slideUp {
@@ -408,7 +410,7 @@ body {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
-    margin-top: 20px;
+    margin-top: 14px;
 }
 
 /* Spinner */

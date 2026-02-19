@@ -2,7 +2,7 @@
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const ALARM_NAME = 'supabase-token-refresh';
-const REFRESH_INTERVAL_MINUTES = 45; // Refresh before the 1h expiry
+const REFRESH_INTERVAL_MINUTES = 30; // Refresh every 30 min (tokens last 1h — 30min safety margin)
 
 // ─── Startup: set up the alarm ────────────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(setupAlarm);
