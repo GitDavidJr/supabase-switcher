@@ -1,75 +1,59 @@
-# Supabase Account Switcher — Chrome Extension
+# 🚀 Supabase Account Switcher
 
-> Troque entre múltiplas contas do Supabase com um clique. Sem logout, sem login repetido.
-
-## Como funciona
-
-O Supabase armazena tokens de sessão no `localStorage` do browser. Esta extensão salva e troca esses tokens, permitindo alternar entre contas instantaneamente.
-
-**Tudo fica no seu computador** — nenhum dado é enviado para servidores externos.
+Troque entre múltiplas contas do Supabase com um único clique. Pare de deslogar e logar toda hora; gerencie todos os seus clientes em um só lugar.
 
 ---
 
-## Instalação
+## 🛠️ Guia de Instalação no Chrome
 
-### 1. Gerar os ícones
+Siga estes passos simples para adicionar a extensão ao seu navegador:
 
-```bash
-npm install canvas
-node generate-icons.js
-```
+### 1. Baixe o Código
+Certifique-se de ter todos os arquivos do repositório em uma pasta no seu computador.
 
-> Se não quiser instalar `canvas`, crie a pasta `icons/` manualmente e adicione qualquer PNG nos tamanhos 16x16, 48x48 e 128x128 com os nomes `icon16.png`, `icon48.png`, `icon128.png`.
+### 2. Ative o Modo do Desenvolvedor
+1. Abra o Google Chrome.
+2. Digite `chrome://extensions` na barra de endereços e aperte Enter.
+3. No canto superior direito, ative a chave **"Modo do desenvolvedor"**.
 
-### 2. Carregar no Chrome
-
-1. Abra `chrome://extensions`
-2. Ative **"Modo do desenvolvedor"** (canto superior direito)
-3. Clique em **"Carregar sem compactação"**
-4. Selecione esta pasta (`switch-supabase/`)
-
----
-
-## Como usar
-
-### Salvando uma conta
-1. Abra o [dashboard do Supabase](https://supabase.com/dashboard) e faça login normalmente
-2. Clique no ícone da extensão na barra do Chrome
-3. Clique no botão **+** (canto superior direito do popup)
-4. Dê um nome para a conta (ex: "Cliente A") e escolha uma cor
-5. Clique em **Salvar conta**
-
-Repita para cada uma das suas contas.
-
-### Trocando de conta
-1. Clique no ícone da extensão
-2. Clique no nome da conta que deseja usar
-3. O Supabase recarregará já logado nessa conta ✓
+### 3. Carregue a Extensão
+1. Clique no botão **"Carregar sem compactação"** que apareceu no canto superior esquerdo.
+2. Selecione a pasta onde você salvou os arquivos desta extensão.
+3. A extensão "Supabase Account Switcher" aparecerá na sua lista!
 
 ---
 
-## Estrutura de arquivos
+## 📖 Como Usar (Passo a Passo)
 
-```
-switch-supabase/
-├── manifest.json        # Configuração da extensão (MV3)
-├── background.js        # Service worker — lógica de sessão
-├── content.js           # Content script (injetado no Supabase)
-├── popup.html           # Interface do popup
-├── popup.css            # Estilos dark mode premium
-├── popup.js             # Lógica do popup
-├── generate-icons.js    # Script para gerar os ícones PNG
-└── icons/
-    ├── icon16.png
-    ├── icon48.png
-    └── icon128.png
-```
+### Passo 1: Salvar sua primeira conta
+1. Vá para o [Dashboard do Supabase](https://supabase.com/dashboard) e faça login normalmente.
+2. Clique no ícone de "quebra-cabeça" do Chrome (extensões) e clique no **Supabase Account Switcher** (Dica: Use o ícone de "fixar" para deixá-lo sempre visível).
+3. No popup, clique no botão **+** (canto superior direito).
+4. Dê um nome (ex: "Cliente Alfa") e escolha uma cor.
+5. Clique em **Salvar conta**.
+
+### Passo 2: Adicionar outras contas
+1. Faça logout no site do Supabase.
+2. Faça login com a conta do seu outro cliente.
+3. Repita o processo de clicar no **+** e salvar com um novo nome (ex: "Projeto Beta").
+
+### Passo 3: Trocar instantaneamente
+1. Quando quiser trocar, basta abrir a extensão e clicar no nome da conta desejada.
+2. A página irá recarregar automaticamente já logada na conta selecionada! ⚡
 
 ---
 
-## Limites & notas
+## 🛡️ Segurança e Privacidade
+- **Local Only:** Todos os seus tokens de sessão são armazenados apenas no seu navegador (`chrome.storage.local`).
+- **Sem Servidores Extras:** Nenhum dado é enviado para fora do seu computador.
+- **Transparência:** O código é aberto e você pode verificar como os tokens são manipulados no arquivo `background.js`.
 
-- Funciona **apenas no `supabase.com`** (dashboard oficial)
-- Não funciona em instâncias self-hosted do Supabase por padrão (pode ajustar `host_permissions` no `manifest.json`)
-- Os tokens são armazenados no `chrome.storage.local` — limpos se você desinstalar a extensão
-- Tokens de acesso expiram (normalmente em 1h). A extensão também salva o refresh token, então o Supabase irá renovar automaticamente após a troca
+---
+
+## 📝 Notas de Versão
+- **Redirect Inteligente:** Ao trocar de conta, você é redirecionado para `/dashboard/organizations` para evitar erros de autenticação de workspace.
+- **Multi-Projeto:** Suporta múltiplos projetos ativos na mesma sessão.
+
+---
+
+*Desenvolvido para facilitar a vida de quem gerencia múltiplos clientes no ecossistema Supabase.*
