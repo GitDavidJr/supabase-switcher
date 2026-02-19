@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Obrigatório para criar Releases e subir arquivos
     steps:
       - uses: actions/checkout@v4
 
