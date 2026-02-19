@@ -58,6 +58,14 @@ body {
     letter-spacing: -0.2px;
 }
 
+.version-tag {
+    font-size: 9px;
+    color: #444;
+    font-weight: 500;
+    margin-top: 2px;
+    opacity: 0.7;
+}
+
 .header-actions {
     display: flex;
     align-items: center;

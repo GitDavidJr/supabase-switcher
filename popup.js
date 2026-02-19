@@ -9,6 +9,7 @@ let sessions = [];
 let activeSessionId = null;
 let selectedColor = COLORS[0];
 let deletingId = null;
+let cachedPendingSession = null;
 
 // DOM refs
 const sessionsList = document.getElementById('sessions-list');
@@ -442,7 +443,8 @@ async function checkPendingSession() {
     const res = await sendMessage({ action: 'GET_PENDING_SESSION' });
     if (!res.pendingSession) return;
 
-    const { email } = res.pendingSession;
+    cachedPendingSession = res.pendingSession;
+    const { email } = cachedPendingSession;
     const banner = document.getElementById('pending-banner');
     const pendingEmailEl = document.getElementById('pending-email');
 
@@ -452,17 +454,22 @@ async function checkPendingSession() {
 
 async function savePendingSession() {
     console.log('[Supabase Switcher] savePendingSession clicked');
-    showStatus('<span class="spinner"></span>Acessando dados da nova conta...', 'info');
+
+    // First try the cache, then try fetching again
+    let pendingSession = cachedPendingSession;
+    if (!pendingSession) {
+        const res = await sendMessage({ action: 'GET_PENDING_SESSION' });
+        pendingSession = res?.pendingSession;
+    }
+
+    if (!pendingSession) {
+        showStatus('Erro: Sessão não encontrada. Tente logar novamente.', 'error');
+        setTimeout(clearStatus, 4000);
+        return;
+    }
 
     try {
-        const res = await sendMessage({ action: 'GET_PENDING_SESSION' });
-        if (!res || !res.pendingSession) {
-            showStatus('Erro: Sessão não encontrada. Tente logar novamente.', 'error');
-            setTimeout(clearStatus, 4000);
-            return;
-        }
-
-        const { tokens, email } = res.pendingSession;
+        const { tokens, email } = pendingSession;
         console.log('[Supabase Switcher] Captured tokens for:', email);
 
         // Hide banner
