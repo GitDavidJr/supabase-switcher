@@ -58,6 +58,12 @@ body {
     letter-spacing: -0.2px;
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
 /* Status bar */
 .status-bar {
     padding: 9px 16px;
@@ -507,4 +513,69 @@ body {
     flex-shrink: 0;
     text-align: right;
     line-height: 1.3;
+}
+
+/* ── Pending new session banner ───────────────────────────────────────────── */
+.pending-banner {
+    background: linear-gradient(135deg, rgba(62, 207, 142, 0.12), rgba(62, 207, 142, 0.05));
+    border-bottom: 1px solid rgba(62, 207, 142, 0.25);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.pending-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.pending-banner-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.pending-banner-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.pending-banner-email {
+    font-size: 11px;
+    color: var(--text-sub);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pending-banner-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.btn-sm {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 5px;
+    height: auto;
 }

@@ -26,8 +26,10 @@ const deleteAccountName = document.getElementById('delete-account-name');
 document.addEventListener('DOMContentLoaded', async () => {
     buildColorPicker();
     await loadSessions();
+    await checkPendingSession(); // Check if a new login was completed
 
     document.getElementById('btn-add').addEventListener('click', openSaveModal);
+    document.getElementById('btn-new-login').addEventListener('click', openNewLoginTab);
     document.getElementById('modal-close').addEventListener('click', closeModal);
     document.getElementById('btn-cancel').addEventListener('click', closeModal);
     document.getElementById('btn-save-confirm').addEventListener('click', confirmSave);
@@ -37,6 +39,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-export').addEventListener('click', exportSessions);
     document.getElementById('btn-import').addEventListener('click', () => document.getElementById('import-file').click());
     document.getElementById('import-file').addEventListener('change', importSessions);
+    document.getElementById('btn-pending-save').addEventListener('click', savePendingSession);
+    document.getElementById('btn-pending-dismiss').addEventListener('click', dismissPendingSession);
 
     accountNameInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') confirmSave();
@@ -182,6 +186,8 @@ async function openSaveModal() {
 function closeModal() {
     modalOverlay.classList.add('hidden');
     pendingUserInfo = null;
+    window._pendingTokens = null;
+    window._pendingEmail = null;
 }
 
 async function confirmSave() {
@@ -194,6 +200,32 @@ async function confirmSave() {
 
     closeModal();
 
+    // If called from savePendingSession (new login flow), we have tokens directly
+    if (window._pendingTokens) {
+        const { sessions: currentSessions = [] } = await chrome.storage.local.get('sessions');
+        const newSession = {
+            id: `session_${Date.now()}`,
+            name,
+            email: window._pendingEmail || '',
+            color: selectedColor,
+            tokens: window._pendingTokens,
+            savedAt: new Date().toISOString(),
+        };
+        currentSessions.push(newSession);
+        await chrome.storage.local.set({ sessions: currentSessions });
+        await sendMessage({ action: 'CLEAR_PENDING_SESSION' });
+        window._pendingTokens = null;
+        window._pendingEmail = null;
+
+        btn.disabled = false;
+        btn.textContent = 'Salvar conta';
+        await loadSessions();
+        showStatus(`✓ "${name}" salva com sucesso!`, 'success');
+        setTimeout(clearStatus, 3000);
+        return;
+    }
+
+    // Normal flow: read from active tab
     const res = await sendMessage({
         action: 'SAVE_SESSION',
         data: { name, color: selectedColor }
@@ -211,6 +243,7 @@ async function confirmSave() {
     showStatus(`✓ "${name}" salva com sucesso!`, 'success');
     setTimeout(clearStatus, 3000);
 }
+
 
 // ─── Delete modal ─────────────────────────────────────────────────────────────
 function openDeleteModal(id, name) {
@@ -387,3 +420,63 @@ async function importSessions(e) {
     };
     reader.readAsText(file);
 }
+
+// ─── Login com nova conta ─────────────────────────────────────────────────────
+
+async function openNewLoginTab() {
+    showStatus('<span class="spinner"></span>Abrindo nova aba de login...', 'info');
+    const res = await sendMessage({ action: 'OPEN_LOGIN_TAB' });
+    if (res.error) {
+        showStatus(res.error, 'error');
+        setTimeout(clearStatus, 4000);
+        return;
+    }
+    showStatus('✓ Faça login na aba aberta. Volte aqui depois!', 'success');
+    setTimeout(clearStatus, 5000);
+    // Close popup so the user can interact with the new tab
+    window.close();
+}
+
+async function checkPendingSession() {
+    const res = await sendMessage({ action: 'GET_PENDING_SESSION' });
+    if (!res.pendingSession) return;
+
+    const { email } = res.pendingSession;
+    const banner = document.getElementById('pending-banner');
+    const pendingEmailEl = document.getElementById('pending-email');
+
+    if (pendingEmailEl) pendingEmailEl.textContent = email || 'E-mail não detectado';
+    if (banner) banner.classList.remove('hidden');
+}
+
+async function savePendingSession() {
+    const res = await sendMessage({ action: 'GET_PENDING_SESSION' });
+    if (!res.pendingSession) return;
+
+    const { tokens, email } = res.pendingSession;
+
+    // Use the save modal to let user name the account
+    const banner = document.getElementById('pending-banner');
+    if (banner) banner.classList.add('hidden');
+
+    // Pre-fill modal with detected email and open it
+    modalEmail.textContent = email ? `Conta: ${email}` : '';
+    accountNameInput.value = email ? email.split('@')[0] : 'Nova Conta';
+    selectedColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+    buildColorPicker();
+    modalOverlay.classList.remove('hidden');
+    accountNameInput.focus();
+    accountNameInput.select();
+
+    // Override confirm to use the pending tokens directly
+    const originalConfirm = window._pendingConfirmOverride;
+    window._pendingTokens = tokens;
+    window._pendingEmail = email;
+}
+
+async function dismissPendingSession() {
+    await sendMessage({ action: 'CLEAR_PENDING_SESSION' });
+    const banner = document.getElementById('pending-banner');
+    if (banner) banner.classList.add('hidden');
+}
+

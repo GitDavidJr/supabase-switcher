@@ -68,7 +68,125 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         refreshAllSessions().then(sendResponse).catch(e => sendResponse({ error: e.message }));
         return true;
     }
+    if (message.action === 'OPEN_LOGIN_TAB') {
+        handleOpenLoginTab().then(sendResponse).catch(e => sendResponse({ error: e.message }));
+        return true;
+    }
+    if (message.action === 'GET_PENDING_SESSION') {
+        handleGetPendingSession().then(sendResponse).catch(e => sendResponse({ error: e.message }));
+        return true;
+    }
+    if (message.action === 'CLEAR_PENDING_SESSION') {
+        chrome.storage.local.remove('pendingSession').then(() => sendResponse({ success: true }));
+        return true;
+    }
 });
+
+// ─── Login Tab Logic ──────────────────────────────────────────────────────────
+
+/**
+ * Opens a fresh Supabase login tab.
+ * Clears all sb-* localStorage keys so the page shows the login form,
+ * even if the user is currently logged in.
+ */
+async function handleOpenLoginTab() {
+    // Mark that we're waiting for a new login
+    await chrome.storage.local.set({ loginTabId: null, pendingSession: null });
+
+    const tab = await chrome.tabs.create({ url: 'https://supabase.com/dashboard/sign-in' });
+    await chrome.storage.local.set({ loginTabId: tab.id });
+    return { success: true };
+}
+
+async function handleGetPendingSession() {
+    const { pendingSession = null } = await chrome.storage.local.get('pendingSession');
+    return { pendingSession };
+}
+
+// ─── Tab watcher: detect login completion ────────────────────────────────────
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+    if (changeInfo.status !== 'complete') return;
+
+    const { loginTabId } = await chrome.storage.local.get('loginTabId');
+    if (tabId !== loginTabId) return;
+
+    const url = tab.url || '';
+
+    // STEP 1: Tab just loaded on the sign-in page → clear localStorage so
+    //         the page shows the login form instead of redirecting to dashboard.
+    if (url.includes('/sign-in') || url.includes('/signin')) {
+        try {
+            await chrome.scripting.executeScript({
+                target: { tabId },
+                func: () => {
+                    const keysToRemove = [];
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key && (key.startsWith('sb-') || key.toLowerCase().includes('supabase'))) {
+                            keysToRemove.push(key);
+                        }
+                    }
+                    keysToRemove.forEach(k => localStorage.removeItem(k));
+                    if (keysToRemove.length > 0) {
+                        // Reload once to let Supabase render the login form cleanly
+                        window.location.reload();
+                    }
+                }
+            });
+        } catch (e) {
+            console.warn('[Supabase Switcher] Could not clear localStorage on login tab:', e.message);
+        }
+        return;
+    }
+
+    // STEP 2: Tab navigated away from sign-in to dashboard → login succeeded!
+    if (url.includes('supabase.com/dashboard') && !url.includes('sign-in') && !url.includes('signin')) {
+        console.log('[Supabase Switcher] New login detected on tab', tabId);
+        try {
+            const results = await chrome.scripting.executeScript({
+                target: { tabId },
+                func: () => {
+                    const tokens = {};
+                    let userInfo = null;
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key && (key.startsWith('sb-') || key.toLowerCase().includes('supabase'))) {
+                            tokens[key] = localStorage.getItem(key);
+                        }
+                    }
+                    for (const key of Object.keys(tokens)) {
+                        try {
+                            const parsed = JSON.parse(tokens[key]);
+                            if (parsed && parsed.user) {
+                                userInfo = { email: parsed.user.email, id: parsed.user.id };
+                                break;
+                            }
+                        } catch { /* ignore */ }
+                    }
+                    return { tokens, userInfo };
+                }
+            });
+
+            const { tokens, userInfo } = results[0]?.result || {};
+
+            if (tokens && Object.keys(tokens).length > 0) {
+                // Store as a pending session for the popup to detect
+                await chrome.storage.local.set({
+                    pendingSession: {
+                        tokens,
+                        email: userInfo?.email || '',
+                        detectedAt: new Date().toISOString(),
+                    },
+                    loginTabId: null, // stop watching
+                });
+                console.log(`[Supabase Switcher] Pending session captured for: ${userInfo?.email}`);
+            }
+        } catch (e) {
+            console.warn('[Supabase Switcher] Failed to read tokens after login:', e.message);
+        }
+    }
+});
+
 
 // ─── Token Refresh Logic ──────────────────────────────────────────────────────
 

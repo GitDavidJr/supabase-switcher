@@ -20,18 +20,43 @@
             </svg>
             <span class="header-title">Supabase Switcher</span>
         </div>
-        <button id="btn-add" class="btn-icon" title="Salvar conta atual">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                stroke-linecap="round">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-        </button>
+        <div class="header-actions">
+            <button id="btn-new-login" class="btn-icon" title="Login com nova conta">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                    <polyline points="10 17 15 12 10 7" />
+                    <line x1="15" y1="12" x2="3" y2="12" />
+                </svg>
+            </button>
+            <button id="btn-add" class="btn-icon" title="Salvar conta atual">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+            </button>
+        </div>
     </header>
 
     <!-- Status bar -->
     <div id="status-bar" class="status-bar hidden">
         <span id="status-text"></span>
+    </div>
+
+    <!-- Pending new session banner -->
+    <div id="pending-banner" class="pending-banner hidden">
+        <div class="pending-banner-content">
+            <span class="pending-banner-icon">🎉</span>
+            <div>
+                <div class="pending-banner-title">Nova conta detectada!</div>
+                <div class="pending-banner-email" id="pending-email"></div>
+            </div>
+        </div>
+        <div class="pending-banner-actions">
+            <button id="btn-pending-save" class="btn btn-primary btn-sm">Salvar</button>
+            <button id="btn-pending-dismiss" class="btn btn-ghost btn-sm">Ignorar</button>
+        </div>
     </div>
 
     <!-- Account list -->
