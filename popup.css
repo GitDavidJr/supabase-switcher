@@ -215,6 +215,25 @@ body {
     flex-shrink: 0;
 }
 
+.session-item.expired {
+    opacity: 0.65;
+    border-color: #f97316;
+    cursor: not-allowed;
+}
+
+.expired-badge {
+    font-size: 9px;
+    font-weight: 700;
+    background: rgba(249, 115, 22, 0.2);
+    color: #f97316;
+    padding: 2px 6px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
 /* Buttons */
 .btn-icon {
     background: transparent;

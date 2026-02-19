@@ -5,15 +5,29 @@ const ALARM_NAME = 'supabase-token-refresh';
 const REFRESH_INTERVAL_MINUTES = 30; // Refresh every 30 min (tokens last 1h — 30min safety margin)
 
 // ─── Startup: set up the alarm ────────────────────────────────────────────────
-chrome.runtime.onInstalled.addListener(setupAlarm);
-chrome.runtime.onStartup.addListener(setupAlarm);
+chrome.runtime.onInstalled.addListener(() => {
+    setupAlarm();
+    // Refresh immediately after install in case sessions exist
+    refreshAllSessions();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+    setupAlarm();
+    // CRITICAL: Refresh immediately on startup. If Chrome was closed for hours,
+    // tokens may be expired. Don't wait for the 30-min alarm delay.
+    console.log('[Supabase Switcher] Browser started — refreshing all sessions immediately.');
+    refreshAllSessions();
+});
 
 function setupAlarm() {
-    chrome.alarms.create(ALARM_NAME, {
-        periodInMinutes: REFRESH_INTERVAL_MINUTES,
-        delayInMinutes: REFRESH_INTERVAL_MINUTES,
+    // Clear any existing alarm first to avoid duplicates
+    chrome.alarms.clear(ALARM_NAME, () => {
+        chrome.alarms.create(ALARM_NAME, {
+            periodInMinutes: REFRESH_INTERVAL_MINUTES,
+            delayInMinutes: REFRESH_INTERVAL_MINUTES,
+        });
+        console.log(`[Supabase Switcher] Token refresh alarm set every ${REFRESH_INTERVAL_MINUTES} min.`);
     });
-    console.log(`[Supabase Switcher] Token refresh alarm set every ${REFRESH_INTERVAL_MINUTES} min.`);
 }
 
 // ─── Alarm handler ────────────────────────────────────────────────────────────
@@ -61,7 +75,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  */
 async function refreshAllSessions() {
     const { sessions = [] } = await chrome.storage.local.get('sessions');
-    if (sessions.length === 0) return { refreshed: 0 };
+    if (sessions.length === 0) return { refreshed: 0, total: 0 };
 
     let refreshed = 0;
     const updatedSessions = [...sessions];
@@ -71,12 +85,17 @@ async function refreshAllSessions() {
         try {
             const result = await refreshSessionTokens(session);
             if (result) {
-                updatedSessions[i] = { ...session, tokens: result.tokens };
+                updatedSessions[i] = { ...session, tokens: result.tokens, expired: false };
                 refreshed++;
-                console.log(`[Supabase Switcher] Refreshed tokens for: ${session.name}`);
+                console.log(`[Supabase Switcher] ✓ Refreshed tokens for: ${session.name}`);
             }
         } catch (e) {
-            console.warn(`[Supabase Switcher] Failed to refresh "${session.name}":`, e.message);
+            console.warn(`[Supabase Switcher] ✗ Failed to refresh "${session.name}":`, e.message);
+            // If it's an auth error (401/400), the refresh token itself has expired
+            if (e.message.includes('400') || e.message.includes('401') || e.message.includes('invalid_grant')) {
+                updatedSessions[i] = { ...session, expired: true };
+                console.warn(`[Supabase Switcher] Session "${session.name}" has an expired refresh token — user must re-login.`);
+            }
         }
     }
 

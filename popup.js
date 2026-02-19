@@ -60,19 +60,23 @@ function renderSessions() {
 
     sessions.forEach(session => {
         const li = document.createElement('li');
-        li.className = 'session-item' + (session.id === activeSessionId ? ' active' : '');
-        li.title = `Trocar para: ${session.name}`;
+        const isActive = session.id === activeSessionId;
+        const isExpired = session.expired === true;
+
+        li.className = 'session-item' + (isActive ? ' active' : '') + (isExpired ? ' expired' : '');
+        li.title = isExpired
+            ? '⚠️ Sessão expirada — faça login novamente no Supabase e salve outra vez'
+            : `Trocar para: ${session.name}`;
 
         const initials = getInitials(session.name);
-        const isActive = session.id === activeSessionId;
 
         li.innerHTML = `
-      <div class="session-avatar" style="background: ${session.color}">${initials}</div>
+      <div class="session-avatar" style="background: ${isExpired ? '#555' : session.color}">${initials}</div>
       <div class="session-info">
         <div class="session-name">${escHtml(session.name)}</div>
         ${session.email ? `<div class="session-email">${escHtml(session.email)}</div>` : ''}
       </div>
-      ${isActive ? '<span class="active-badge">Ativa</span>' : ''}
+      ${isExpired ? '<span class="expired-badge">⚠ Expirada</span>' : (isActive ? '<span class="active-badge">Ativa</span>' : '')}
       <div class="session-actions">
         <button class="btn-icon danger" data-id="${session.id}" data-action="delete" title="Remover">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -83,13 +87,16 @@ function renderSessions() {
       </div>
     `;
 
-        // Click on item → switch session
         li.addEventListener('click', (e) => {
             if (e.target.closest('[data-action]')) return;
+            if (isExpired) {
+                showStatus('⚠ Sessão expirada. Faça login no Supabase e salve novamente.', 'error');
+                setTimeout(clearStatus, 4000);
+                return;
+            }
             switchSession(session.id);
         });
 
-        // Delete button
         li.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
             e.stopPropagation();
             openDeleteModal(session.id, session.name);
@@ -98,6 +105,7 @@ function renderSessions() {
         sessionsList.appendChild(li);
     });
 }
+
 
 // ─── Switch session ───────────────────────────────────────────────────────────
 async function switchSession(id) {
