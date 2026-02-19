@@ -1,0 +1,8 @@
+node_modules
+*.log
+.DS_Store
+.env
+icons/icon*.png
+# Keep icons if they are part of the repo, but since I generated them, maybe keep them?
+# Actually, extension needs icons, so I should NOT ignore icons/ dir.
+# But I will ignore node_modules and logs.

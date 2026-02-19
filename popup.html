@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Supabase Account Switcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M21 3L9.5 14.5" stroke="#3ECF8E" stroke-width="2" stroke-linecap="round"/>
+        <path d="M21 3L14 21L9.5 14.5L3 10L21 3Z" stroke="#3ECF8E" stroke-width="2" stroke-linejoin="round"/>
+      </svg>
+      <span class="header-title">Supabase Switcher</span>
+    </div>
+    <button id="btn-add" class="btn-icon" title="Salvar conta atual">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Status bar -->
+  <div id="status-bar" class="status-bar hidden">
+    <span id="status-text"></span>
+  </div>
+
+  <!-- Account list -->
+  <main class="main">
+    <div id="empty-state" class="empty-state hidden">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#444" stroke-width="1.5">
+        <rect x="2" y="5" width="20" height="14" rx="2"/>
+        <path d="M2 10h20"/>
+      </svg>
+      <p class="empty-title">Nenhuma conta salva</p>
+      <p class="empty-sub">Abra o Supabase, faça login e clique em <strong>+</strong> para salvar.</p>
+    </div>
+    <ul id="sessions-list" class="sessions-list"></ul>
+  </main>
+
+  <!-- Save Account Modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Salvar conta atual</h2>
+        <button id="modal-close" class="btn-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <p class="modal-subtitle" id="modal-email"></p>
+      <div class="form-group">
+        <label class="form-label">Nome do cliente / conta</label>
+        <input id="account-name" type="text" class="form-input" placeholder="Ex: Cliente A, Empresa XYZ..." maxlength="40" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cor</label>
+        <div class="color-picker" id="color-picker"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-cancel" class="btn btn-ghost">Cancelar</button>
+        <button id="btn-save-confirm" class="btn btn-primary">Salvar conta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Delete Modal -->
+  <div id="delete-modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Remover conta</h2>
+      </div>
+      <p class="modal-subtitle">Tem certeza que deseja remover <strong id="delete-account-name"></strong>? A sessão salva será apagada.</p>
+      <div class="modal-actions">
+        <button id="btn-delete-cancel" class="btn btn-ghost">Cancelar</button>
+        <button id="btn-delete-confirm" class="btn btn-danger">Remover</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
