@@ -141,48 +141,80 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
     // STEP 2: Tab navigated away from sign-in to dashboard → login succeeded!
     if (url.includes('supabase.com/dashboard') && !url.includes('sign-in') && !url.includes('signin')) {
-        console.log('[Supabase Switcher] New login detected on tab', tabId);
-        try {
-            const results = await chrome.scripting.executeScript({
-                target: { tabId },
-                func: () => {
-                    const tokens = {};
-                    let userInfo = null;
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if (key && (key.startsWith('sb-') || key.toLowerCase().includes('supabase'))) {
-                            tokens[key] = localStorage.getItem(key);
-                        }
-                    }
-                    for (const key of Object.keys(tokens)) {
-                        try {
-                            const parsed = JSON.parse(tokens[key]);
-                            if (parsed && parsed.user) {
-                                userInfo = { email: parsed.user.email, id: parsed.user.id };
-                                break;
+        console.log('[Supabase Switcher] Dashboard activity detected on tab', tabId);
+
+        // Retry loop: Dashboard writes localStorage async, so we retry with delays.
+        async function captureTokensWithRetry(retries = 5) {
+            for (let attempt = 1; attempt <= retries; attempt++) {
+                // Give the Dashboard time to write tokens (longer on first attempt)
+                const delay = attempt === 1 ? 1200 : 800;
+                await new Promise(r => setTimeout(r, delay));
+
+                try {
+                    const results = await chrome.scripting.executeScript({
+                        target: { tabId },
+                        func: () => {
+                            const tokens = {};
+                            let userInfo = null;
+
+                            for (let i = 0; i < localStorage.length; i++) {
+                                const key = localStorage.key(i);
+                                if (key && (key.startsWith('sb-') || key.toLowerCase().includes('supabase'))) {
+                                    tokens[key] = localStorage.getItem(key);
+                                }
                             }
-                        } catch { /* ignore */ }
+
+                            // Extract userInfo only from real auth token keys
+                            for (const key of Object.keys(tokens)) {
+                                if (!key.endsWith('-auth-token') && key !== 'supabase.dashboard.auth.token') continue;
+                                try {
+                                    const parsed = JSON.parse(tokens[key]);
+                                    if (parsed?.user?.email) {
+                                        userInfo = { email: parsed.user.email, id: parsed.user.id };
+                                        break;
+                                    }
+                                } catch { /* ignore */ }
+                            }
+
+                            return { tokens, userInfo };
+                        }
+                    });
+
+                    const { tokens, userInfo } = results[0]?.result || {};
+
+                    // Only return if we have an actual GoTrue auth token key
+                    const hasRealAuthToken = Object.keys(tokens || {}).some(k =>
+                        (k.startsWith('sb-') && k.endsWith('-auth-token')) ||
+                        k === 'supabase.dashboard.auth.token'
+                    );
+
+                    if (hasRealAuthToken) {
+                        console.log(`[Supabase Switcher] Auth token captured on attempt ${attempt}`);
+                        return { tokens, userInfo };
                     }
-                    return { tokens, userInfo };
+                    console.warn(`[Supabase Switcher] Attempt ${attempt}: no auth token yet...`);
+                } catch (e) {
+                    console.warn(`[Supabase Switcher] Attempt ${attempt} failed:`, e.message);
                 }
-            });
-
-            const { tokens, userInfo } = results[0]?.result || {};
-
-            if (tokens && Object.keys(tokens).length > 0) {
-                // Store as a pending session for the popup to detect
-                await chrome.storage.local.set({
-                    pendingSession: {
-                        tokens,
-                        email: userInfo?.email || '',
-                        detectedAt: new Date().toISOString(),
-                    },
-                    loginTabId: null, // stop watching
-                });
-                console.log(`[Supabase Switcher] Pending session captured for: ${userInfo?.email}`);
             }
-        } catch (e) {
-            console.warn('[Supabase Switcher] Failed to read tokens after login:', e.message);
+            return null;
+        }
+
+        const captured = await captureTokensWithRetry();
+
+        if (captured && Object.keys(captured.tokens).length > 0) {
+            // Check if this session is already saved (optional? No, let user decide)
+
+            // Store as a pending session for the popup to detect
+            await chrome.storage.local.set({
+                pendingSession: {
+                    tokens: captured.tokens,
+                    email: captured.userInfo?.email || '',
+                    detectedAt: new Date().toISOString(),
+                },
+                loginTabId: null, // stop watching
+            });
+            console.log(`[Supabase Switcher] Pending session captured for: ${captured.userInfo?.email || 'unknown'}`);
         }
     }
 });
@@ -238,95 +270,90 @@ async function refreshAllSessions() {
  */
 async function refreshSessionTokens(session) {
     const { tokens } = session;
-
-    // Find the auth token key (sb-<project-ref>-auth-token)
-    const authKey = Object.keys(tokens).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
-    if (!authKey) {
-        console.warn(`[Supabase Switcher] No sb-*-auth-token key found for "${session.name}"`);
-        return null;
-    }
-
-    // Extract project ref: sb-<project-ref>-auth-token
-    const match = authKey.match(/^sb-(.+)-auth-token$/);
-    if (!match) return null;
-    const projectRef = match[1];
-
-    // Parse the stored token JSON
-    let tokenData;
-    try {
-        tokenData = JSON.parse(tokens[authKey]);
-    } catch {
-        console.warn(`[Supabase Switcher] Could not parse token JSON for "${session.name}"`);
-        return null;
-    }
-
-    const refreshToken = tokenData?.refresh_token;
-    if (!refreshToken) {
-        console.warn(`[Supabase Switcher] No refresh_token in "${session.name}"`);
-        return null;
-    }
-
-    // --- Smarter threshold check ---
-    // Use expires_at (Unix seconds) if available, otherwise estimate from expires_in
-    const nowSec = Math.floor(Date.now() / 1000);
-    let secsRemaining = null;
-
-    if (tokenData.expires_at) {
-        secsRemaining = tokenData.expires_at - nowSec;
-    } else if (tokenData.expires_in) {
-        // Fallback: treat as recently-issued — refresh if expires_in < threshold
-        secsRemaining = tokenData.expires_in;
-    }
-
-    // Skip if more than 5 minutes remaining (more aggressive than before —
-    // the real safety net is: if we're within 5 min, refresh no matter what)
-    const REFRESH_THRESHOLD_SECS = 5 * 60; // 5 minutes
-    if (secsRemaining !== null && secsRemaining > REFRESH_THRESHOLD_SECS) {
-        console.log(`[Supabase Switcher] "${session.name}" still valid (${Math.round(secsRemaining / 60)} min left), skipping.`);
-        return null;
-    }
-
-    // --- Call the GoTrue refresh endpoint ---
-    const url = `https://${projectRef}.supabase.co/auth/v1/token?grant_type=refresh_token`;
-    let response;
-    try {
-        response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-    } catch (networkErr) {
-        throw new Error(`Network error during refresh: ${networkErr.message}`);
-    }
-
-    if (!response.ok) {
-        const body = await response.text();
-        throw new Error(`Supabase refresh failed (${response.status}): ${body}`);
-    }
-
-    const newTokenData = await response.json();
-
-    /**
-     * CRITICAL: Merge strategy.
-     * The GoTrue API returns the full session object, but we merge ONTO the previous
-     * object to preserve any extra fields the Supabase dashboard stores (like provider_token,
-     * user metadata, etc.). Fields from the new response always win.
-     *
-     * This also ensures the new refresh_token (from rotation) is correctly saved.
-     */
-    const mergedTokenData = {
-        ...tokenData,       // preserve all original fields
-        ...newTokenData,    // overwrite with fresh fields (access_token, refresh_token, expires_at, etc.)
-        // Also update expires_at explicitly in case the API returns only expires_in
-        expires_at: newTokenData.expires_at || (nowSec + (newTokenData.expires_in || 3600)),
-    };
-
-    // Rebuild the tokens map
     const updatedTokens = { ...tokens };
-    updatedTokens[authKey] = JSON.stringify(mergedTokenData);
+    let anyRefreshed = false;
 
-    console.log(`[Supabase Switcher] ✓ "${session.name}" token refreshed. New refresh_token saved. Expires in ${Math.round((mergedTokenData.expires_at - nowSec) / 60)} min.`);
-    return { tokens: updatedTokens };
+    // Identify all keys that look like auth tokens
+    const authKeys = Object.keys(tokens).filter(k =>
+        (k.startsWith('sb-') && k.endsWith('-auth-token')) ||
+        k === 'supabase.dashboard.auth.token'
+    );
+
+    if (authKeys.length === 0) return null;
+
+    for (const authKey of authKeys) {
+        try {
+            // 1. Identify refresh URL
+            let refreshUrl = '';
+            if (authKey === 'supabase.dashboard.auth.token') {
+                refreshUrl = 'https://alt.supabase.io/auth/v1/token?grant_type=refresh_token';
+            } else {
+                const projectRef = authKey.match(/^sb-(.+)-auth-token$/)?.[1];
+                if (!projectRef) continue;
+                refreshUrl = `https://${projectRef}.supabase.co/auth/v1/token?grant_type=refresh_token`;
+            }
+
+            // 2. Parse current token data
+            let tokenData;
+            try {
+                tokenData = JSON.parse(tokens[authKey]);
+            } catch { continue; }
+
+            const refreshToken = tokenData?.refresh_token;
+            if (!refreshToken) continue;
+
+            // 3. Check expiration (refresh if < 10 mins remaining for safety)
+            const nowSec = Math.floor(Date.now() / 1000);
+            const expiresAt = tokenData.expires_at || (nowSec + (tokenData.expires_in || 3600));
+            const secsRemaining = expiresAt - nowSec;
+
+            if (secsRemaining > 600) { // 10 minutes
+                continue;
+            }
+
+            console.log(`[Supabase Switcher] Refreshing ${authKey} for "${session.name}"...`);
+
+            // 4. Perform refresh
+            const response = await fetch(refreshUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refresh_token: refreshToken }),
+            });
+
+            if (!response.ok) {
+                const errBody = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errBody}`);
+            }
+
+            const newTokenData = await response.json();
+
+            // 5. Merge and Update
+            const mergedData = {
+                ...tokenData,
+                ...newTokenData,
+                expires_at: newTokenData.expires_at || (nowSec + (newTokenData.expires_in || 3600))
+            };
+
+            updatedTokens[authKey] = JSON.stringify(mergedData);
+            anyRefreshed = true;
+
+            // 6. Special sync for Dashboard User key
+            if (authKey === 'supabase.dashboard.auth.token' && mergedData.user) {
+                const userKey = 'supabase.dashboard.auth.token-user';
+                if (updatedTokens[userKey]) {
+                    updatedTokens[userKey] = JSON.stringify({ user: mergedData.user });
+                }
+            }
+        } catch (e) {
+            console.warn(`[Supabase Switcher] Failed to refresh ${authKey}:`, e.message);
+            // Re-throw if it's a fatal auth error to mark session as expired
+            if (e.message.includes('400') || e.message.includes('invalid_grant')) {
+                throw e;
+            }
+        }
+    }
+
+    return anyRefreshed ? { tokens: updatedTokens } : null;
 }
 
 
@@ -348,7 +375,7 @@ async function readTokensFromTab(tabId) {
             const tokens = {};
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && (key.startsWith('sb-') || key.includes('supabase'))) {
+                if (key && (key.startsWith('sb-') || key.toLowerCase().includes('supabase'))) {
                     tokens[key] = localStorage.getItem(key);
                 }
             }
@@ -356,10 +383,14 @@ async function readTokensFromTab(tabId) {
             for (const key of Object.keys(tokens)) {
                 try {
                     const parsed = JSON.parse(tokens[key]);
-                    if (parsed && parsed.user) {
-                        userInfo = { email: parsed.user.email, id: parsed.user.id };
-                        break;
+                    if (parsed) {
+                        if (parsed.user) {
+                            userInfo = { email: parsed.user.email, id: parsed.user.id };
+                        } else if (parsed.email) {
+                            userInfo = { email: parsed.email, id: parsed.id };
+                        }
                     }
+                    if (userInfo?.email) break;
                 } catch (e) { /* ignore */ }
             }
             return { tokens, userInfo };

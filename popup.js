@@ -151,10 +151,13 @@ async function openSaveModal() {
             func: () => {
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
-                    if (key?.startsWith('sb-')) {
+                    if (key && (key.startsWith('sb-') || key.toLowerCase().includes('supabase'))) {
                         try {
                             const parsed = JSON.parse(localStorage.getItem(key));
-                            if (parsed?.user?.email) return { email: parsed.user.email };
+                            if (parsed) {
+                                if (parsed.user?.email) return { email: parsed.user.email };
+                                if (parsed.email) return { email: parsed.email };
+                            }
                         } catch { }
                     }
                 }
@@ -444,6 +447,27 @@ async function checkPendingSession() {
     if (!res.pendingSession) return;
 
     cachedPendingSession = res.pendingSession;
+    console.log('[Supabase Switcher] Pending session found:', {
+        email: cachedPendingSession.email,
+        tokenKeys: Object.keys(cachedPendingSession.tokens || {}),
+        hasTokens: !!cachedPendingSession.tokens && Object.keys(cachedPendingSession.tokens).length > 0
+    });
+
+    // Check if this session is already saved
+    const { sessions = [] } = await chrome.storage.local.get('sessions');
+    const isAlreadySaved = sessions.some(s => 
+        s.email === cachedPendingSession.email && 
+        Object.keys(s.tokens).length === Object.keys(cachedPendingSession.tokens).length &&// Check if tokens are the same
+        Object.keys(s.tokens).every(key => 
+            s.tokens[key] === cachedPendingSession.tokens[key]
+        )
+    );
+
+    if (isAlreadySaved) {
+        console.log('[Supabase Switcher] Session already saved, not showing banner');
+        return;
+    }
+
     const { email } = cachedPendingSession;
     const banner = document.getElementById('pending-banner');
     const pendingEmailEl = document.getElementById('pending-email');
@@ -455,15 +479,21 @@ async function checkPendingSession() {
 async function savePendingSession() {
     console.log('[Supabase Switcher] savePendingSession clicked');
 
-    // First try the cache, then try fetching again
-    let pendingSession = cachedPendingSession;
-    if (!pendingSession) {
+    let pendingSession;
+    if (cachedPendingSession) {
+        pendingSession = cachedPendingSession;
+    } else {
         const res = await sendMessage({ action: 'GET_PENDING_SESSION' });
         pendingSession = res?.pendingSession;
     }
 
-    if (!pendingSession) {
-        showStatus('Erro: Sessão não encontrada. Tente logar novamente.', 'error');
+    console.log('[Supabase Switcher] pendingSession on save:', {
+        exists: !!pendingSession,
+        tokenKeys: Object.keys(pendingSession?.tokens || {}),
+    });
+
+    if (!pendingSession || !pendingSession.tokens || Object.keys(pendingSession.tokens).length === 0) {
+        showStatus('Erro: Sessão não encontrada ou vazia. Tente logar novamente.', 'error');
         setTimeout(clearStatus, 4000);
         return;
     }
